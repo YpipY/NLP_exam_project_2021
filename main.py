@@ -25,6 +25,7 @@ from LSTM import SentenceLSTM
 from NN import NNModel
 from BERTmodel import BERTModel
 from dataset import Dataset
+from BERTLSTM import BERTLSTM
 
 
 def file_loader(d: string):
@@ -453,7 +454,7 @@ def predict(model, tokens, tags, batch_size, vocab):
     balancedaccuracy = metrics.balanced_accuracy_score(y_true=y_true, y_pred=y_pred)
     recall = metrics.recall_score(y_true=y_true, y_pred=y_pred)
     precision = metrics.precision_score(y_true=y_true, y_pred=y_pred)
-    f1 = metrics.f1_score(y_true=y_true, y_pred=y_pred)
+    f1 = metrics.f1_score(y_true=y_true, y_pred=y_pred, average='micro')
 
     print(f"accuracy: {accuracy}, balanced accuracy: {balancedaccuracy}, precision: {precision}, recall: {recall}, "
           f"f1: {f1}")
@@ -505,7 +506,7 @@ def predict_bert(model, tokens, tags, batch_size):
     balancedaccuracy = metrics.balanced_accuracy_score(y_true=y_true, y_pred=y_pred)
     recall = metrics.recall_score(y_true=y_true, y_pred=y_pred)
     precision = metrics.precision_score(y_true=y_true, y_pred=y_pred)
-    f1 = metrics.f1_score(y_true=y_true, y_pred=y_pred)
+    f1 = metrics.f1_score(y_true=y_true, y_pred=y_pred, average='micro')
 
     print(f"accuracy: {accuracy}, balanced accuracy: {balancedaccuracy}, precision: {precision}, recall: {recall}, "
           f"f1: {f1}")
@@ -529,7 +530,7 @@ def compute_metrics(p):
     balancedaccuracy = metrics.balanced_accuracy_score(y_true=labels, y_pred=pred)
     recall = metrics.recall_score(y_true=labels, y_pred=pred)
     precision = metrics.precision_score(y_true=labels, y_pred=pred)
-    f1 = metrics.f1_score(y_true=labels, y_pred=pred)
+    f1 = metrics.f1_score(y_true=labels, y_pred=pred, average='micro')
 
     return {"accuracy": accuracy, "balancedaccuracy": balancedaccuracy, "precision": precision, "recall": recall, "f1": f1}
 
@@ -538,30 +539,26 @@ class Main:
     runlstm = False
     runnn = False
     runlr = False
-    useBERT = False
+    useBERT = True
     runBERTmodel = False
-    BERTmodeltest = True
+    BERTmodeltest = False
     # interesting models: none
     # Notes:
-    # * maybe the model is too large (over-fitting)
+    # * lstm is too large it is over-fitting
     # * model just will not generalize
-    # * look into gradiant clipping and batch normalization
-    # * how it the validation set connect to the training set
-    # * Try BERT
-    # * Try logreg and full connected NN
-    hidden_layer_size = 32
+    hidden_layer_size = 64
     batch_size = 16
-    learning_rate = 0.001
-    patience = 1000
-    epochs = 100000
-    dropout_p = 0
+    learning_rate = 0.01
+    patience = 100
+    epochs = 10000
+    dropout_p = 0.1
     L2 = 0.01
-    save_name = "bertmodel.pkl"
-    embedding_model = "glove-wiki-gigaword-50"
+    save_name = "BERTpre.pkl"
+    embedding_model = "bert-base-uncased-finetuned-rapport/checkpoint-9825"
 
-    use_existing = False
+    use_existing = True
 
-    train = True
+    train = False
 
     # set a seed to make the results reproducible
     torch.manual_seed(451) #24
@@ -618,7 +615,7 @@ class Main:
 
 
         # create trainer
-        metric_name = "balancedaccuracy"
+        metric_name = "f1"
         model_name = 'bert-base-uncased'.split("/")[-1]
         args = TrainingArguments(
             f"{model_name}-finetuned-rapport",
@@ -742,7 +739,7 @@ class Main:
         if use_existing:
             model = torch.load(save_name)
         else:
-            model = NNModel(layers=[32, 16, 8], embedding_layer=embedding_layer, p=dropout_p)
+            model = NNModel(layers=[128, 64, 32], embedding_layer=embedding_layer, p=dropout_p)
     elif runlr:
         if use_existing:
             model = torch.load(save_name)
@@ -752,7 +749,8 @@ class Main:
         if use_existing:
             model = torch.load(save_name)
         else:
-            model = BERTModel(layers=[64], p=dropout_p)
+            model = BERTLSTM(output_dim=num_classes, hidden_dim_size=hidden_layer_size, p=dropout_p,
+                             embedding_layer=embedding_model)
 
     # initializing optimizer and loss
     optimizer = torch.optim.AdamW(model.parameters(), learning_rate, weight_decay=L2)  # AdamW optimizer algorithm, amsgrad=True
@@ -782,8 +780,8 @@ class Main:
         predict(model, test_lemmas, test_label, batch_size, vocab)
     elif useBERT:
         print("train set predictions")
-        predict_bert(model, train_lemmas, train_label, batch_size, vocab)
+        predict_bert(model, train_lemmas, train_label, batch_size)
         print("validation set predictions")
-        predict_bert(model, val_lemmas, val_label, batch_size, vocab)
+        predict_bert(model, val_lemmas, val_label, batch_size)
         print("test set predictions")
-        predict_bert(model, test_lemmas, test_label, batch_size, vocab)
+        predict_bert(model, test_lemmas, test_label, batch_size)
